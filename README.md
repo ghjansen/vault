@@ -1,2 +1,2 @@
 # vault
-A simple vault for MacOSX using GnuPG
+A simple vault based on GNU Privacy Guard (GnuPG)
