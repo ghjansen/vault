@@ -19,7 +19,7 @@
 CIPHER=AES256
 SYMKEYCACHE=false
 COMPRESS=true
-DELETEORIGINALCOPY=false
+DELETEORIGINAL=false
 DELETEENCRYPTEDCOPY=false
 
 #colours
@@ -31,8 +31,7 @@ NC='\033[0m' # No Color
 #arguments
 OPERATION="$1"
 FILE="$2"
-
-
+TARFILENAME="$FILE.tar"
 
 #main
 init(){
@@ -75,6 +74,7 @@ open(){
   printf "${GREEN}Vault open.${NC}\n"
 }
 
+#decrypt file
 decrypt(){
   GPGPARAMS=""
   #disable key cache
@@ -84,16 +84,17 @@ decrypt(){
   GPGPARAMS="$GPGPARAMS--output ${FILE%.*} $FILE"
   #decrypt file
   gpg -d $GPGPARAMS
+  #check if file was decrypted
+  if [ -f ${FILE%.*} ]; then
+    echo "Decrypted file '$FILE'"
+  else
+    printf "${RED}ERROR: Failed to decrypt file '${FILE%.*}'.${NC}\n"
+    exit 1
+  fi
 }
 
+#decompress decrypted file
 untar(){
-  #check if file was decrypted
-  if [ ! -f ${FILE%.*} ]; then
-    printf "${RED}ERROR: Could not find decrypted file '${FILE%.*}'.${NC}\n"
-    exit 1
-  else
-      echo "Decrypted file '$FILE'"
-  fi
   #check if the file is compressed
   TARPARAMS=""
   DECRYPTEDTYPE=$(file ${FILE%.*})
@@ -126,6 +127,7 @@ untar(){
   fi
 }
 
+#delete encrypted file after decryption
 delete_encrypted_copy(){
   if [[ $DELETEENCRYPTEDCOPY == "true" ]]; then
     rm -rf "$FILE"
@@ -143,12 +145,105 @@ delete_encrypted_copy(){
 
 #close vault
 close(){
-  echo "Closing vault $FILE"
+  warning_message
+  compress
+  encrypt
+  delete_original
+  printf "${GREEN}Vault closed.${NC}\n"
 }
 
 #display warning message if original file will be removed
 warning_message(){
- echo "Warning"
+  if [[ $DELETEORIGINAL == "true" ]]; then
+    printf "${YELLOW}#####################################${NC}\n"
+    printf "${YELLOW}#             WARNING!              #${NC}\n"
+    printf "${YELLOW}#####################################${NC}\n"
+    printf "${YELLOW}The file '$FILE' will be PERMANENTLY DELETED after the creation of its encypted copy.${NC}\n"
+    printf "${YELLOW}Make sure to SAVE THE PASSPHRASE you are about to use for encryption.${NC}\n"
+    printf "${YELLOW}THE PASSPHRASE you are about to use will be the ONLY WAY TO RECOVER '$FILE'.${NC}\n"
+    printf "${YELLOW}This operation is NOT REVERSIBLE and LOOSING YOUR PASSPHRASE means LOOSING '$FILE'!${NC}\n"
+    confirmation
+  fi
+}
+
+#ask for user confirmation
+confirmation(){
+  printf "Do you wish to continue? (yes/no): "
+  read CONFIRMATION
+  case $CONFIRMATION in
+  yes)
+    ;;
+  no)
+    printf "${RED}Vault operation aborted.${NC}\n"
+    exit 1
+    ;;
+  *)
+    echo "Please type 'yes' or 'no'."
+    confirmation
+    ;;
+  esac
+}
+
+#compress file to be encrypted
+compress(){
+  TARPARAMS="-cf"
+  if [[ $COMPRESS == "true" ]]; then
+    TARPARAMS="-czf"
+    TARFILENAME="$FILE.tar.gz"
+  fi
+  tar $TARPARAMS $TARFILENAME $FILE
+  #check if file was compressed
+  if [ -f "$TARFILENAME" ]; then
+    echo "Compressed file '$FILE'"
+  else
+    printf "${RED}ERROR: Failed to compress file '$FILE'.${NC}\n"
+    exit 1
+  fi
+}
+
+#encrypt file
+encrypt(){
+  GPGPARAMS=""
+  #disable key cache
+  if [[ $SYMKEYCACHE == "false" ]]; then
+    GPGPARAMS="--no-symkey-cache "
+  fi
+  GPGPARAMS="$GPGPARAMS--personal-cipher-preferences $CIPHER $TARFILENAME"
+  #encrypt file
+  gpg -c $GPGPARAMS
+  #check if file was decrypted
+  if [ -f "$TARFILENAME.gpg" ]; then
+    echo "Encrypted file '$FILE'"
+  else
+    printf "${RED}ERROR: Failed to encrypt file '$FILE'.${NC}\n"
+    FAILED="true";
+  fi
+  #delete compressed file
+  rm -rf "$TARFILENAME"
+  if [ -f "$TARFILENAME" ]; then
+    printf "${RED}ERROR: Failed to delete '$TARFILENAME'. Please try to delete it manually.${NC}\n"
+    exit 1
+  else
+    echo "Deleted file '$TARFILENAME'"
+  fi
+  if [ -n "$FAILED" ]; then
+    exit 1
+  fi
+}
+
+#delete original file after encryption
+delete_original(){
+  if [[ $DELETEORIGINAL == "true" ]]; then
+    rm -rf "$FILE"
+    if [ -f "$FILE" ]; then
+      printf "${RED}ERROR: Failed to delete '$FILE'. Please try to delete it manually.${NC}\n"
+      exit 1
+    else
+      echo "Deleted original file '$FILE'"
+    fi
+  else
+    echo "Keeping original file '$FILE'"
+  fi
 }
 
 init
