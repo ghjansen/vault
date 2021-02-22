@@ -54,13 +54,17 @@ init(){
 
 #override defaults with user configuration
 load_config(){
-  . vault.conf
+  if [ -z ${VAULTCONF+x} ]; then
+    . vault.conf
+  else
+    . $VAULTCONF
+  fi
 }
 
 #validate file
 validate(){
   echo "Validating file '$FILE'"
-  if [ ! -f "$FILE" ]; then
+  if [ ! -e "$PWD/$FILE" ]; then
     printf "${RED}ERROR: File '$FILE' does not exist.${NC}\n"
     exit 1
   fi
@@ -81,11 +85,11 @@ decrypt(){
   if [[ $SYMKEYCACHE == "false" ]]; then
     GPGPARAMS="--no-symkey-cache "
   fi
-  GPGPARAMS="$GPGPARAMS--output ${FILE%.*} $FILE"
+  GPGPARAMS="$GPGPARAMS--output $PWD/${FILE%.*} $PWD/$FILE"
   #decrypt file
   gpg -d $GPGPARAMS
   #check if file was decrypted
-  if [ -f ${FILE%.*} ]; then
+  if [ -e "$PWD/${FILE%.*}" ]; then
     echo "Decrypted file '$FILE'"
   else
     printf "${RED}ERROR: Failed to decrypt file '${FILE%.*}'.${NC}\n"
@@ -97,8 +101,7 @@ decrypt(){
 untar(){
   #check if the file is compressed
   TARPARAMS=""
-  DECRYPTEDTYPE=$(file ${FILE%.*})
-  echo "$DECRYPTEDTYPE"
+  DECRYPTEDTYPE=$(file $PWD/${FILE%.*})
   if [[ $DECRYPTEDTYPE == *"gzip compressed data"* ]]; then
     TARPARAMS="-xzf"
     FILEXT=".tar.gz"
@@ -106,20 +109,20 @@ untar(){
     TARPARAMS="-xf"
     FILEXT=".tar"
   else
-    rm -rf "${FILE%.*}"
+    rm -rf $PWD/${FILE%.*}
     printf "${RED}ERROR: Decripted file '${FILE%.*}' is not supported and it was deleted.${NC}\n"
     exit 1
   fi
   #extract
-  tar $TARPARAMS ${FILE%.*}
-  if [ ! -f ${FILE%$FILEXT} ]; then
+  tar $TARPARAMS $PWD/${FILE%.*}
+  if [ ! -e "$PWD/${FILE%$FILEXT}" ]; then
     printf "${RED}ERROR: Failed to extract '${FILE%.*}'.${NC}\n"
     exit 1
   fi
   echo "Extracted file '${FILE%$FILEXT.gpg}'"
   #delete tarball
-  rm -rf "${FILE%.*}"
-  if [ -f ${FILE%.*} ]; then
+  rm -rf $PWD/${FILE%.*}
+  if [ -e "$PWD/${FILE%.*}" ]; then
     printf "${RED}ERROR: Failed to delete '${FILE%.*}'. Please try to delete it manually.${NC}\n"
     exit 1
   else
@@ -130,8 +133,8 @@ untar(){
 #delete encrypted file after decryption
 delete_encrypted_copy(){
   if [[ $DELETEENCRYPTEDCOPY == "true" ]]; then
-    rm -rf "$FILE"
-    if [ -f "$FILE" ]; then
+    rm -rf $PWD/$FILE
+    if [ -e "$PWD/$FILE" ]; then
       printf "${RED}ERROR: Failed to delete encrypted file '$FILE'. Please try to delete it manually.${NC}\n"
       exit 1
     else
@@ -193,7 +196,7 @@ compress(){
   fi
   tar $TARPARAMS $TARFILENAME $FILE
   #check if file was compressed
-  if [ -f "$TARFILENAME" ]; then
+  if [ -e "$PWD/$TARFILENAME" ]; then
     echo "Compressed file '$FILE'"
   else
     printf "${RED}ERROR: Failed to compress file '$FILE'.${NC}\n"
@@ -208,19 +211,19 @@ encrypt(){
   if [[ $SYMKEYCACHE == "false" ]]; then
     GPGPARAMS="--no-symkey-cache "
   fi
-  GPGPARAMS="$GPGPARAMS--personal-cipher-preferences $CIPHER $TARFILENAME"
+  GPGPARAMS="$GPGPARAMS--personal-cipher-preferences $CIPHER $PWD/$TARFILENAME"
   #encrypt file
   gpg -c $GPGPARAMS
   #check if file was decrypted
-  if [ -f "$TARFILENAME.gpg" ]; then
+  if [ -e "$PWD/$TARFILENAME.gpg" ]; then
     echo "Encrypted file '$FILE'"
   else
     printf "${RED}ERROR: Failed to encrypt file '$FILE'.${NC}\n"
     FAILED="true";
   fi
   #delete compressed file
-  rm -rf "$TARFILENAME"
-  if [ -f "$TARFILENAME" ]; then
+  rm -rf "$PWD/$TARFILENAME"
+  if [ -e "$PWD/$TARFILENAME" ]; then
     printf "${RED}ERROR: Failed to delete '$TARFILENAME'. Please try to delete it manually.${NC}\n"
     exit 1
   else
@@ -234,8 +237,8 @@ encrypt(){
 #delete original file after encryption
 delete_original(){
   if [[ $DELETEORIGINAL == "true" ]]; then
-    rm -rf "$FILE"
-    if [ -f "$FILE" ]; then
+    rm -rf "$PWD/$FILE"
+    if [ -e "$PWD/$FILE" ]; then
       printf "${RED}ERROR: Failed to delete '$FILE'. Please try to delete it manually.${NC}\n"
       exit 1
     else
